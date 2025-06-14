@@ -303,7 +303,7 @@
         // Load train data from JSON
         async function fetchTrainData() {
             try {
-                const response = await fetch('data/train_max_distance_only.json');
+                const response = await fetch('train_max_distance_only.json');
                 if (!response.ok) throw new Error(`HTTP error! Status: ${response.status}`);
                 trainData = await response.json();
                 console.log('Train data loaded:', trainData.length, 'records');
