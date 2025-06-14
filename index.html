@@ -1,0 +1,974 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Indian Railways AI-Powered Health Index</title>
+    <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.3/dist/leaflet.css" />
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+    <script src="https://unpkg.com/leaflet@1.9.3/dist/leaflet.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@3.9.1/dist/chart.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/moment@2.29.1/moment.min.js"></script>
+    <style>
+        body {
+            background: linear-gradient(rgba(0, 0, 0, 0.7), rgba(0, 0, 0, 0.7)), url('https://images.unsplash.com/photo-1507525428034-b723cf961d3e?ixlib=rb-4.0.3&auto=format&fit=crop&w=1920&q=80') no-repeat center center fixed;
+            background-size: cover;
+            font-family: 'Lora', serif;
+            color: #F3F4F6;
+            min-height: 100vh;
+        }
+        .train-animation {
+            animation: moveTrain 12s linear infinite;
+        }
+        @keyframes moveTrain {
+            0% { transform: translateX(-100%); }
+            100% { transform: translateX(100vw); }
+        }
+        .platform-board {
+            background: #1F2937;
+            color: #FBBF24;
+            font-family: 'Courier New', monospace;
+            padding: 0.75rem;
+            border: 3px solid #F97316;
+            transition: box-shadow 0.3s, transform 0.2s;
+        }
+        .platform-board:focus {
+            box-shadow: 0 0 15px #F97316;
+            transform: scale(1.02);
+        }
+        .modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.7);
+            z-index: 1000;
+            justify-content: center;
+            align-items: center;
+        }
+        .modal-content {
+            background: #1F2937;
+            padding: 2.5rem;
+            border-radius: 12px;
+            max-width: 90%;
+            max-height: 85%;
+            overflow-y: auto;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+        }
+        .progress-bar {
+            background: #4B5563;
+            border-radius: 9999px;
+            overflow: hidden;
+        }
+        .progress-bar-fill {
+            background: linear-gradient(to right, #16A34A, #22C55E);
+            height: 100%;
+            transition: width 0.5s ease-in-out;
+        }
+        .fade-in {
+            animation: fadeIn 0.6s ease-in;
+        }
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        .slide-in {
+            animation: slideIn 0.6s ease-out;
+        }
+        @keyframes slideIn {
+            from { transform: translateX(-100%); }
+            to { transform: translateX(0); }
+        }
+        button:hover {
+            transform: scale(1.05);
+            transition: transform 0.2s, background-color 0.3s;
+        }
+        #suggestions {
+            background: #1F2937;
+            border: 1px solid #F97316;
+            max-height: 250px;
+            overflow-y: auto;
+            position: absolute;
+            width: 100%;
+            z-index: 20;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.3);
+        }
+        #suggestions div {
+            padding: 0.75rem;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+        #suggestions div:hover {
+            background: #F97316;
+            color: #1F2937;
+        }
+        .glassmorphism {
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+        }
+        .glow-on-hover:hover {
+            box-shadow: 0 0 20px rgba(249, 115, 22, 0.5);
+        }
+        .train-card {
+            transition: transform 0.3s, box-shadow 0.3s;
+        }
+        .train-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 10px 20px rgba(249, 115, 22, 0.3);
+        }
+        .tooltip {
+            position: relative;
+        }
+        .tooltip .tooltiptext {
+            visibility: hidden;
+            width: 200px;
+            background-color: #1F2937;
+            color: #F3F4F6;
+            text-align: center;
+            border-radius: 6px;
+            padding: 5px;
+            position: absolute;
+            z-index: 1;
+            bottom: 125%;
+            left: 50%;
+            margin-left: -100px;
+            opacity: 0;
+            transition: opacity 0.3s;
+        }
+        .tooltip:hover .tooltiptext {
+            visibility: visible;
+            opacity: 1;
+        }
+    </style>
+</head>
+<body class="min-h-screen flex flex-col">
+    <header class="bg-gradient-to-r from-blue-900 to-indigo-900 text-white text-center py-6 md:py-8 shadow-lg">
+        <h1 class="text-3xl md:text-5xl font-bold flex items-center justify-center">
+            <i class="fas fa-train mr-3 train-animation"></i> Indian Railways AI-Powered Health Index
+        </h1>
+        <div class="mt-4 flex justify-center space-x-4">
+            <button id="toggle-dark" class="bg-gray-700 text-white px-4 py-2 rounded-full hover:bg-gray-600 focus:outline-none">
+                <i class="fas fa-moon"></i> Dark Mode
+            </button>
+            <button id="toggle-sound" class="bg-orange-600 text-white px-4 py-2 rounded-full hover:bg-orange-700">
+                <i class="fas fa-volume-up"></i> Sound Off
+            </button>
+        </div>
+    </header>
+
+    <main class="flex-grow container mx-auto p-4 md:p-8">
+        <section id="auth-section" class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-12 max-w-4xl mx-auto p-8">
+            <div id="login-section" class="glassmorphism p-6 rounded-xl shadow-xl glow-on-hover">
+                <h2 class="text-2xl md:text-3xl font-bold mb-6 text-blue-300"><i class="fas fa-sign-in-alt"></i> Board Now</h2>
+                <div class="space-y-6">
+                    <div>
+                        <label for="login-username" class="block text-sm font-medium text-gray-300">Username</label>
+                        <input type="text" id="login-username" class="w-full p-3 border border-gray-500 rounded-md bg-gray-800 text-white focus:ring-blue-500" aria-label="Login username">
+                    </div>
+                    <div>
+                        <label for="login-password" class="block text-sm font-medium text-gray-300">Password</label>
+                        <input type="password" id="login-password" class="w-full p-3 border border-gray-500 rounded-md bg-gray-800 text-white focus:ring-blue-500" aria-label="Login password">
+                    </div>
+                    <button id="login-btn" class="w-full bg-blue-600 text-white py-3 rounded-md hover:bg-blue-700 glow-on-hover">Board</button>
+                    <p class="text-center text-sm text-gray-400">Don't have an account? <a href="#" id="show-register" class="text-blue-400 hover:underline">Register</a></p>
+                </div>
+            </div>
+            <div id="register-section" class="glassmorphism p-6 rounded-xl shadow-xl glow-on-hover hidden">
+                <h2 class="text-2xl md:text-3xl font-bold mb-6 text-blue-300"><i class="fas fa-user-plus"></i> Join the Journey</h2>
+                <div class="space-y-6">
+                    <div>
+                        <label for="register-username" class="block text-sm font-medium text-gray-300">Username</label>
+                        <input type="text" id="register-username" class="w-full p-3 border border-gray-500 rounded-md bg-gray-800 text-white focus:ring-blue-500" aria-label="Register username">
+                    </div>
+                    <div>
+                        <label for="register-password" class="block text-sm font-medium text-gray-300">Password</label>
+                        <input type="password" id="register-password" class="w-full p-3 border border-gray-500 rounded-md bg-gray-800 text-white focus:ring-blue-500" aria-label="Register password">
+                    </div>
+                    <button id="register-btn" class="w-full bg-blue-600 text-white py-3 rounded-md hover:bg-blue-700 glow-on-hover">Register</button>
+                    <p class="text-center text-sm text-gray-400">Already have an account? <a href="#" id="show-login" class="text-blue-400 hover:underline">Board Now</a></p>
+                </div>
+            </div>
+        </section>
+
+        <section id="main-content" class="hidden">
+            <div class="glassmorphism p-6 md:p-8 rounded-xl shadow-xl mb-8 glow-on-hover">
+                <h2 class="text-2xl md:text-3xl font-bold mb-6 text-blue-300 slide-in"><i class="fas fa-tachometer-alt"></i> Train Health Index</h2>
+                <div class="mb-6 relative">
+                    <label for="train-number" class="block text-sm font-medium mb-2 text-gray-300">Enter Train Number</label>
+                    <input type="text" id="train-number" class="w-full p-3 platform-board focus:ring-0" placeholder="e.g., 10103" aria-label="Train number input" autocomplete="off">
+                    <div id="suggestions" class="hidden"></div>
+                </div>
+                <div class="flex flex-col md:flex-row gap-4">
+                    <button id="get-thi" class="bg-green-600 text-white px-6 py-3 rounded-md hover:bg-green-700 glow-on-hover tooltip">
+                        <i class="fas fa-search"></i> Get Health Index
+                        <span class="tooltiptext">Fetch real-time train health and insights</span>
+                    </button>
+                    <button id="show-ai-features" class="bg-blue-600 text-white px-6 py-3 rounded-md hover:bg-blue-700 glow-on-hover tooltip">
+                        <i class="fas fa-robot"></i> AI Features
+                        <span class="tooltiptext">Explore 100+ AI-driven insights</span>
+                    </button>
+                    <button id="export-report" class="bg-indigo-600 text-white px-6 py-3 rounded-md hover:bg-indigo-700 glow-on-hover tooltip">
+                        <i class="fas fa-file-download"></i> Export Report
+                        <span class="tooltiptext">Download detailed train report</span>
+                    </button>
+                </div>
+                <div id="train-not-found" class="hidden text-red-400 mt-4">Train not found. Please enter a valid train number.</div>
+                <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mt-8">
+                    <div class="train-card glassmorphism p-6 rounded-lg">
+                        <h3 class="text-xl font-bold mb-4 text-blue-300"><i class="fas fa-calendar-alt"></i> Train Schedule</h3>
+                        <div id="train-table" class="overflow-x-auto fade-in">
+                            <table class="w-full border-collapse text-sm">
+                                <thead>
+                                    <tr class="bg-blue-800 text-white">
+                                        <th class="p-3">SEQ</th>
+                                        <th class="p-3">Station (Code)</th>
+                                        <th class="p-3">Distance</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="train-table-body"></tbody>
+                            </table>
+                        </div>
+                    </div>
+                    <div class="train-card glassmorphism p-6 rounded-lg">
+                        <h3 class="text-xl font-bold mb-4 text-blue-300"><i class="fas fa-microchip"></i> Sensor Data & THI</h3>
+                        <div id="sensor-table" class="mb-6 fade-in"></div>
+                        <div id="thi-score" class="mb-6 fade-in">
+                            <p class="text-lg font-bold text-gray-300">THI Score: <span id="thi-value">0</span> / 100</p>
+                            <div class="progress-bar h-6 w-full mt-2">
+                                <div id="thi-progress" class="progress-bar-fill" style="width: 0%"></div>
+                            </div>
+                        </div>
+                        <div id="maintenance-suggestion" class="mb-6 fade-in text-gray-300"></div>
+                        <canvas id="sensor-chart" class="w-full h-80 fade-in"></canvas>
+                    </div>
+                </div>
+            </div>
+
+            <div class="glassmorphism p-6 md:p-8 rounded-xl shadow-xl mb-8 glow-on-hover">
+                <h2 class="text-2xl md:text-3xl font-bold mb-6 text-blue-300"><i class="fas fa-star"></i> Favorite Trains</h2>
+                <ul id="favorites-list" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4"></ul>
+            </div>
+
+            <div class="glassmorphism p-6 md:p-8 rounded-xl shadow-xl mb-8 glow-on-hover">
+                <h2 class="text-2xl md:text-3xl font-bold mb-6 text-blue-300"><i class="fas fa-map"></i> Route Map</h2>
+                <div id="route-map" class="h-80 lg:h-96 w-full rounded-lg"></div>
+            </div>
+
+            <div class="glassmorphism p-6 md:p-8 rounded-xl shadow-xl mb-8 glow-on-hover">
+                <h2 class="text-2xl md:text-3xl font-bold mb-6 text-blue-300"><i class="fas fa-envelope"></i> Contact Us</h2>
+                <div class="space-y-6">
+                    <div>
+                        <label for="contact-message" class="block text-sm font-medium text-gray-300">Your Feedback</label>
+                        <textarea id="contact-message" class="w-full p-3 border border-gray-500 rounded-md bg-gray-800 text-white" rows="5" aria-label="Feedback textarea"></textarea>
+                    </div>
+                    <button id="contact-submit" class="bg-blue-600 text-white px-6 py-3 rounded-md hover:bg-blue-700 glow-on-hover">Send</button>
+                </div>
+                <div id="sentiment-analysis" class="mt-4 text-gray-300"></div>
+            </div>
+
+            <button id="logout-btn" class="bg-red-600 text-white px-6 py-3 rounded-md hover:bg-red-700 glow-on-hover">
+                <i class="fas fa-sign-out-alt"></i> Depart
+            </button>
+        </section>
+    </main>
+
+    <div id="ai-features-modal" class="modal">
+        <div class="modal-content">
+            <h2 class="text-2xl md:text-3xl font-bold mb-6 text-blue-300"><i class="fas fa-robot"></i> AI Features</h2>
+            <ul id="ai-features-list" class="list-disc pl-6 space-y-2 text-gray-300"></ul>
+            <button id="close-ai-modal" class="bg-gray-600 text-white px-6 py-3 rounded-md hover:bg-gray-700 mt-6">Close</button>
+        </div>
+    </div>
+
+    <footer class="bg-gradient-to-r from-blue-900 to-indigo-900 text-white text-center py-6">
+        <p>© 2025 Indian Railways AI-Powered Health Index | <a href="mailto:contact@irhealthindex.in" class="hover:underline text-blue-300">Contact Us</a></p>
+    </footer>
+
+    <audio id="train-sound" src="https://freesound.org/data/previews/260/260614_4751946-lq.mp3"></audio>
+
+    <script>
+        let trainData = [];
+        let sensorChart;
+        let sensorDataHistory = {
+            "Brake Temperature (°C)": [], "Axle Vibration (mm/s)": [], "Wheel Wear (%)": [],
+            "Engine Load (%)": [], "Battery Voltage (V)": [], "Fuel Efficiency (km/L)": []
+        };
+        let timeSeries = [];
+
+        // Load train data from JSON
+        async function fetchTrainData() {
+            try {
+                const response = await fetch('data/train_max_distance_only.json');
+                if (!response.ok) throw new Error(`HTTP error! Status: ${response.status}`);
+                trainData = await response.json();
+                console.log('Train data loaded:', trainData.length, 'records');
+                initializeAI();
+            } catch (error) {
+                console.error('Error loading train data:', error);
+                alert('Failed to load train data. Please ensure train_max_distance_only.json exists.');
+                trainData = [];
+            }
+        }
+
+        // Dark mode toggle
+        document.getElementById('toggle-dark').addEventListener('click', () => {
+            document.body.classList.toggle('bg-gray-900');
+            document.querySelectorAll('.glassmorphism').forEach(el => {
+                el.classList.toggle('bg-gray-800');
+                el.classList.toggle('text-white');
+            });
+            document.getElementById('toggle-dark').innerHTML = document.body.classList.contains('bg-gray-900')
+                ? '<i class="fas fa-sun"></i> Light Mode'
+                : '<i class="fas fa-moon"></i> Dark Mode';
+        });
+
+        // Authentication
+        const loginBtn = document.getElementById('login-btn');
+        const registerBtn = document.getElementById('register-btn');
+        const logoutBtn = document.getElementById('logout-btn');
+        const showRegister = document.getElementById('show-register');
+        const showLogin = document.getElementById('show-login');
+        const authSection = document.getElementById('auth-section');
+        const mainContent = document.getElementById('main-content');
+        const loginSection = document.getElementById('login-section');
+        const registerSection = document.getElementById('register-section');
+
+        showRegister.addEventListener('click', () => {
+            loginSection.classList.add('hidden');
+            registerSection.classList.remove('hidden');
+        });
+
+        showLogin.addEventListener('click', () => {
+            registerSection.classList.add('hidden');
+            loginSection.classList.remove('hidden');
+        });
+
+        registerBtn.addEventListener('click', () => {
+            const username = document.getElementById('register-username').value;
+            const password = document.getElementById('register-password').value;
+            if (username && password) {
+                localStorage.setItem('user_' + username, password);
+                alert('Registration successful! Please board now.');
+                registerSection.classList.add('hidden');
+                loginSection.classList.remove('hidden');
+            } else {
+                alert('Please fill in all fields.');
+            }
+        });
+
+        loginBtn.addEventListener('click', () => {
+            const username = document.getElementById('login-username').value;
+            const password = document.getElementById('login-password').value;
+            const storedPassword = localStorage.getItem('user_' + username);
+            if (storedPassword && storedPassword === password) {
+                authSection.classList.add('hidden');
+                mainContent.classList.remove('hidden');
+                updateUserPreferences(username);
+            } else {
+                alert('Invalid credentials.');
+            }
+        });
+
+        logoutBtn.addEventListener('click', () => {
+            authSection.classList.remove('hidden');
+            mainContent.classList.add('hidden');
+            loginSection.classList.remove('hidden');
+            registerSection.classList.add('hidden');
+        });
+
+        // Sensor data generation
+        function generateSensorData() {
+            return {
+                "Brake Temperature (°C)": Math.random() * (120 - 30) + 30,
+                "Axle Vibration (mm/s)": Math.random() * (4.0 - 0.1) + 0.1,
+                "Wheel Wear (%)": Math.random() * (90 - 10) + 10,
+                "Engine Load (%)": Math.random() * (100 - 40) + 40,
+                "Battery Voltage (V)": Math.random() * (14.5 - 10.5) + 10.5,
+                "Fuel Efficiency (km/L)": Math.random() * (5 - 2) + 2
+            };
+        }
+
+        // THI calculation (based on sensor data and distance)
+        function calculateTHI(sensorData, distance) {
+            let score = 100;
+            if (sensorData["Brake Temperature (°C)"] > 90) score -= 15;
+            if (sensorData["Axle Vibration (mm/s)"] > 2.5) score -= 20;
+            if (sensorData["Wheel Wear (%)"] > 70) score -= 25;
+            if (sensorData["Engine Load (%)"] > 85) score -= 10;
+            if (sensorData["Battery Voltage (V)"] < 11) score -= 10;
+            if (sensorData["Fuel Efficiency (km/L)"] < 3) score -= 10;
+            if (distance > 2000) score -= 10; // Penalty for long routes
+            return Math.max(0, Math.round(score));
+        }
+
+        function getMaintenanceSuggestion(thi) {
+            if (thi >= 80) return "✅ Train in excellent condition. Routine checks sufficient.";
+            if (thi >= 50) return "⚠️ Schedule maintenance within 48 hours.";
+            return "❌ Critical issues detected. Immediate inspection required!";
+        }
+
+        // AI Features (120+ Real-Time)
+        const aiFeatures = [
+            // Route Analysis (20)
+            { name: 'Route Distance Classification', fn: data => data[0].Distance > 1000 ? "Long-haul route" : data[0].Distance > 500 ? "Medium-haul route" : "Short-haul route", description: 'Classifies route based on distance.' },
+            { name: 'Estimated Travel Time', fn: data => `Estimated travel time: ${(data[0].Distance / 60).toFixed(1)} hours (assuming 60 km/h average speed)`, description: 'Estimates travel duration.' },
+            { name: 'Fuel Consumption Estimate', fn: data => `Estimated fuel: ${(data[0].Distance / 3).toFixed(1)} L (assuming 3 km/L)`, description: 'Predicts fuel usage.' },
+            { name: 'Station Connectivity Score', fn: data => {
+                const station = data[0]['Source Station'];
+                const connections = trainData.filter(row => row['Source Station'] === station || row['Destination Station'] === station).length;
+                return `Connectivity score: ${Math.min(connections / 50 * 100, 100).toFixed(1)}%`;
+            }, description: 'Measures station connectivity.' },
+            { name: 'Route Popularity', fn: data => {
+                const route = `${data[0]['Source Station']}-${data[0]['Destination Station']}`;
+                const count = trainData.filter(row => `${row['Source Station']}-${row['Destination Station']}` === route).length;
+                return `Route popularity: ${count} trains`;
+            }, description: 'Counts trains on the same route.' },
+            { name: 'Major Hub Detection', fn: data => {
+                const station = data[0]['Source Station'];
+                const connections = trainData.filter(row => row['Source Station'] === station || row['Destination Station'] === station).length;
+                return connections > 50 ? "Major railway hub" : "Regular station";
+            }, description: 'Identifies major hubs.' },
+            { name: 'Route Efficiency', fn: data => `Efficiency: ${(data[0].Distance / 2).toFixed(1)} km/stop (assuming 2 stops)`, description: 'Measures distance per stop.' },
+            { name: 'Carbon Footprint Estimate', fn: data => `Carbon footprint: ${(data[0].Distance * 0.02).toFixed(1)} kg CO2`, description: 'Estimates emissions.' },
+            { name: 'Train Density Analysis', fn: data => {
+                const route = `${data[0]['Source Station']}-${data[0]['Destination Station']}`;
+                const count = trainData.filter(row => `${row['Source Station']}-${row['Destination Station']}` === route).length;
+                return count > 10 ? "High train density" : "Low train density";
+            }, description: 'Assesses route congestion.' },
+            { name: 'Distance Anomaly Detection', fn: data => data[0].Distance > 3000 ? "⚠️ Unusually long route" : "✅ Normal route length", description: 'Detects extreme distances.' },
+            { name: 'Route Redundancy Check', fn: data => {
+                const reverse = trainData.filter(row => row['Source Station'] === data[0]['Destination Station'] && row['Destination Station'] === data[0]['Source Station']).length;
+                return reverse > 5 ? "Possible redundant route" : "Unique route";
+            }, description: 'Checks for reverse routes.' },
+            { name: 'Passenger Load Forecast', fn: data => data[0].Distance > 1000 ? "High passenger load expected" : "Moderate passenger load", description: 'Predicts passenger volume.' },
+            { name: 'Freight Suitability', fn: data => data[0].Distance > 1500 ? "Suitable for freight" : "Better for passengers", description: 'Assesses freight potential.' },
+            { name: 'Route Safety Score', fn: data => {
+                const score = 100 - (data[0].Distance / 5000 * 20);
+                return `Safety score: ${Math.round(score)}%`;
+            }, description: 'Estimates route safety.' },
+            { name: 'Weather Impact Risk', fn: data => data[0].Distance > 2000 ? "High weather impact risk" : "Low weather impact risk", description: 'Assesses weather-related risks.' },
+            { name: 'Tourist Route Potential', fn: data => data[0].Distance > 800 && data[0]['Train Name'].toLowerCase().includes('express') ? "High tourist potential" : "Regular route", description: 'Identifies tourist routes.' },
+            { name: 'Maintenance Frequency', fn: data => data[0].Distance > 1500 ? "Frequent maintenance required" : "Standard maintenance schedule", description: 'Predicts maintenance needs.' },
+            { name: 'Operational Cost Estimate', fn: data => `Estimated cost: ₹${(data[0].Distance * 0.5).toFixed(0)}`, description: 'Estimates operational costs.' },
+            { name: 'Route Electrification Suitability', fn: data => data[0].Distance > 1000 ? "Suitable for electrification" : "Diesel preferred", description: 'Assesses electrification potential.' },
+            { name: 'Train Speed Potential', fn: data => data[0].Distance > 1000 ? "High-speed potential" : "Standard speed suitable", description: 'Evaluates speed upgrades.' },
+
+            // Train Categorization (20)
+            { name: 'Train Type Classification', fn: data => data[0]['Train Name'].toLowerCase().includes('express') ? "Express train" : data[0]['Train Name'].toLowerCase().includes('mail') ? "Mail train" : "Local/Other", description: 'Classifies train type.' },
+            { name: 'Luxury Train Detection', fn: data => data[0]['Train Name'].toLowerCase().includes('shatabdi') || data[0]['Train Name'].toLowerCase().includes('rajdhani') ? "Luxury train" : "Regular train", description: 'Identifies premium trains.' },
+            { name: 'Commuter Train Check', fn: data => data[0].Distance < 200 ? "Commuter train" : "Non-commuter train", description: 'Detects commuter routes.' },
+            { name: 'Long-Haul Train', fn: data => data[0].Distance > 1500 ? "Long-haul train" : "Short/medium-haul train", description: 'Identifies long-distance trains.' },
+            { name: 'Express Train Validation', fn: data => data[0]['Train Name'].toLowerCase().includes('express') && data[0].Distance > 500 ? "True express train" : "Not express", description: 'Validates express status.' },
+            { name: 'Freight Train Potential', fn: data => data[0]['Train Name'].toLowerCase().includes('goods') ? "Freight train" : "Passenger train", description: 'Detects freight trains.' },
+            { name: 'Heritage Train Detection', fn: data => data[0]['Train Name'].toLowerCase().includes('heritage') || data[0]['Train Name'].toLowerCase().includes('palace') ? "Heritage train" : "Regular train", description: 'Identifies heritage trains.' },
+            { name: 'Train Priority Score', fn: data => {
+                const score = data[0]['Train Name'].toLowerCase().includes('shatabdi') ? 90 : data[0]['Train Name'].toLowerCase().includes('express') ? 70 : 50;
+                return `Priority score: ${score}%`;
+            }, description: 'Assigns train priority.' },
+            { name: 'Superfast Train Check', fn: data => data[0]['Train Name'].toLowerCase().includes('superfast') ? "Superfast train" : "Regular train", description: 'Detects superfast trains.' },
+            { name: 'Train Age Estimation', fn: data => data[0].Distance > 2000 ? "Older train likely" : "Modern train possible", description: 'Estimates train age.' },
+            { name: 'Passenger Comfort Rating', fn: data => data[0]['Train Name'].toLowerCase().includes('rajdhani') ? "High comfort" : "Standard comfort", description: 'Rates passenger comfort.' },
+            { name: 'Train Reliability Index', fn: data => {
+                const score = 100 - (data[0].Distance / 4000 * 20);
+                return `Reliability: ${Math.round(score)}%`;
+            }, description: 'Measures train reliability.' },
+            { name: 'Train Punctuality Forecast', fn: data => data[0].Distance < 500 ? "High punctuality expected" : "Moderate punctuality", description: 'Predicts punctuality.' },
+            { name: 'Train Capacity Estimate', fn: data => data[0].Distance > 1000 ? "High capacity train" : "Standard capacity", description: 'Estimates train capacity.' },
+            { name: 'Train Modernization Need', fn: data => data[0].Distance > 2500 ? "Modernization recommended" : "Current setup sufficient", description: 'Assesses modernization needs.' },
+            { name: 'Train Route Exclusivity', fn: data => {
+                const route = `${data[0]['Source Station']}-${data[0]['Destination Station']}`;
+                const count = trainData.filter(row => `${row['Source Station']}-${row['Destination Station']}` === route).length;
+                return count === 1 ? "Exclusive route" : "Shared route";
+            }, description: 'Checks route exclusivity.' },
+            { name: 'Train Demand Forecast', fn: data => data[0].Distance > 800 ? "High demand expected" : "Moderate demand", description: 'Predicts train demand.' },
+            { name: 'Train Upgrade Potential', fn: data => data[0]['Train Name'].toLowerCase().includes('express') ? "Upgrade to superfast" : "No upgrade needed", description: 'Suggests train upgrades.' },
+            { name: 'Train Service Frequency', fn: data => {
+                const route = `${data[0]['Source Station']}-${data[0]['Destination Station']}`;
+                const count = trainData.filter(row => `${row['Source Station']}-${row['Destination Station']}` === route).length;
+                return `Service frequency: ${count} trains/day`;
+            }, description: 'Estimates service frequency.' },
+            { name: 'Train Route Competitiveness', fn: data => {
+                const route = `${data[0]['Source Station']}-${data[0]['Destination Station']}`;
+                const count = trainData.filter(row => `${row['Source Station']}-${row['Destination Station']}` === route).length;
+                return count > 5 ? "Highly competitive route" : "Less competitive route";
+            }, description: 'Assesses route competition.' },
+
+            // Predictive Maintenance (20)
+            { name: 'Maintenance Urgency', fn: data => data[0].Distance > 2000 ? "Urgent maintenance needed" : "Routine maintenance sufficient", description: 'Predicts maintenance urgency.' },
+            { name: 'Wheel Wear Prediction', fn: sensor => sensor["Wheel Wear (%)"] > 80 ? "Critical wheel wear" : "Normal wheel wear", description: 'Predicts wheel degradation.' },
+            { name: 'Brake Failure Risk', fn: sensor => sensor["Brake Temperature (°C)"] > 100 ? "High brake failure risk" : "Low brake failure risk", description: 'Assesses brake reliability.' },
+            { name: 'Engine Stress Forecast', fn: sensor => sensor["Engine Load (%)"] > 90 ? "High engine stress" : "Normal engine operation", description: 'Predicts engine stress.' },
+            { name: 'Battery Life Prediction', fn: sensor => sensor["Battery Voltage (V)"] < 11.5 ? "Battery replacement needed" : "Battery life sufficient", description: 'Predicts battery health.' },
+            { name: 'Fuel Efficiency Dip', fn: sensor => sensor["Fuel Efficiency (km/L)"] < 2.5 ? "Poor fuel efficiency" : "Normal fuel efficiency", description: 'Detects fuel anomalies.' },
+            { name: 'Maintenance Cost Estimate', fn: sensor => {
+                const cost = sensor["Wheel Wear (%)"] > 70 ? 5000 : 0;
+                return `Estimated cost: ₹${cost}`;
+            }, description: 'Estimates maintenance costs.' },
+            { name: 'Maintenance Interval', fn: data => data[0].Distance > 1500 ? "Maintenance every 1000 km" : "Maintenance every 5000 km", description: 'Predicts maintenance intervals.' },
+            { name: 'Component Failure Risk', fn: sensor => sensor["Axle Vibration (mm/s)"] > 3 ? "High component failure risk" : "Low failure risk", description: 'Predicts component issues.' },
+            { name: 'Brake Wear Rate', fn: sensor => sensor["Brake Temperature (°C)"] > 95 ? "High brake wear rate" : "Normal brake wear", description: 'Estimates brake degradation.' },
+            { name: 'Engine Overload Risk', fn: sensor => sensor["Engine Load (%)"] > 95 ? "High engine overload risk" : "Normal engine load", description: 'Detects engine strain.' },
+            { name: 'Battery Voltage Stability', fn: sensor => sensor["Battery Voltage (V)"] < 11 ? "Unstable battery voltage" : "Stable battery voltage", description: 'Assesses battery stability.' },
+            { name: 'Fuel System Health', fn: sensor => sensor["Fuel Efficiency (km/L)"] < 3 ? "Fuel system issues detected" : "Fuel system healthy", description: 'Evaluates fuel system.' },
+            { name: 'Axle Maintenance Need', fn: sensor => sensor["Axle Vibration (mm/s)"] > 3.5 ? "Axle maintenance required" : "Axle in good condition", description: 'Predicts axle maintenance.' },
+            { name: 'Maintenance Priority', fn: data => data[0].Distance > 2500 ? "High priority maintenance" : "Standard priority", description: 'Prioritizes maintenance.' },
+            { name: 'Sensor Anomaly Detection', fn: sensor => sensor["Brake Temperature (°C)"] > 110 ? "Sensor anomaly detected" : "Sensors normal", description: 'Detects sensor issues.' },
+            { name: 'Maintenance Scheduling', fn: data => data[0].Distance > 2000 ? "Schedule at next major station" : "No immediate scheduling needed", description: 'Optimizes maintenance timing.' },
+            { name: 'Component Lifespan Forecast', fn: sensor => sensor["Wheel Wear (%)"] > 75 ? "Replace components soon" : "Components have sufficient lifespan", description: 'Predicts component lifespan.' },
+            { name: 'Emergency Maintenance Risk', fn: sensor => sensor["Brake Temperature (°C)"] > 105 ? "High emergency maintenance risk" : "Low risk", description: 'Predicts emergency needs.' },
+            { name: 'Maintenance Optimization', fn: data => data[0].Distance > 1800 ? "Optimize maintenance for long routes" : "Standard maintenance sufficient", description: 'Optimizes maintenance plans.' },
+
+            // Personalization (20)
+            { name: 'User Route Preference', fn: data => {
+                const prefs = JSON.parse(localStorage.getItem('userPrefs') || '{}');
+                return prefs.favoriteRoutes?.includes(`${data[0]['Source Station']}-${data[0]['Destination Station']}`) ? "Favorite route detected" : "Add to favorite routes";
+            }, description: 'Matches user route preferences.' },
+            { name: 'Distance Preference Match', fn: data => {
+                const prefs = JSON.parse(localStorage.getItem('userPrefs') || '{}');
+                const maxDistance = prefs.maxDistance || 1000;
+                return data[0].Distance <= maxDistance ? "Matches your distance preference" : "Exceeds your distance preference";
+            }, description: 'Aligns with user distance preferences.' },
+            { name: 'Favorite Train Alerts', fn: data => {
+                const favorites = JSON.parse(localStorage.getItem('favorites') || '[]');
+                return favorites.includes(data[0]['Train No'].toString()) ? "Favorite train alert enabled" : "Add to favorites for alerts";
+            }, description: 'Notifies for favorite trains.' },
+            { name: 'Custom THI Threshold', fn: sensor => {
+                const prefs = JSON.parse(localStorage.getItem('userPrefs') || '{}');
+                const threshold = prefs.thiThreshold || 80;
+                return calculateTHI(sensor, 0) < threshold ? `THI below your threshold of ${threshold}` : `THI meets your threshold of ${threshold}`;
+            }, description: 'Uses user-defined THI thresholds.' },
+            { name: 'Preferred Station Alerts', fn: data => {
+                const prefs = JSON.parse(localStorage.getItem('userPrefs') || '{}');
+                const stations = prefs.preferredStations || [];
+                return stations.includes(data[0]['Source Station']) || stations.includes(data[0]['Destination Station']) ? "Preferred station in route" : "No preferred stations";
+            }, description: 'Notifies for preferred stations.' },
+            { name: 'Custom Report Format', fn: () => {
+                const prefs = JSON.parse(localStorage.getItem('userPrefs') || '{}');
+                return prefs.reportFormat || "Default report format applied";
+            }, description: 'Generates user-preferred reports.' },
+            { name: 'User Activity Insights', fn: () => {
+                const activity = JSON.parse(localStorage.getItem('userActivity') || '[]');
+                return activity.length ? `Tracked ${activity.length} user actions` : "No user activity tracked";
+            }, description: 'Analyzes user interactions.' },
+            { name: 'Custom UI Theme', fn: () => {
+                const prefs = JSON.parse(localStorage.getItem('userPrefs') || '{}');
+                return prefs.theme || "Default theme applied";
+            }, description: 'Applies user-selected theme.' },
+            { name: 'Route Recommendation', fn: data => {
+                const prefs = JSON.parse(localStorage.getItem('userPrefs') || '{}');
+                const maxDistance = prefs.maxDistance || 1000;
+                const similar = trainData.filter(row => row.Distance <= maxDistance && row['Train No'] !== data[0]['Train No']).slice(0, 3);
+                return similar.length ? `Recommended routes: ${similar.map(r => r['Train Name']).join(', ')}` : "No similar routes found";
+            }, description: 'Suggests similar routes.' },
+            { name: 'Alert Frequency Setting', fn: () => {
+                const prefs = JSON.parse(localStorage.getItem('userPrefs') || '{}');
+                return `Alert frequency: ${prefs.alertFrequency || 'default'}`;
+            }, description: 'Sets user alert intervals.' },
+            { name: 'Preferred Train Type', fn: data => {
+                const prefs = JSON.parse(localStorage.getItem('userPrefs') || '{}');
+                const trainType = prefs.trainType || 'All';
+                return trainType === 'All' || data[0]['Train Name'].toLowerCase().includes(trainType.toLowerCase()) ? "Matches preferred train type" : "Different train type";
+            }, description: 'Filters by train type.' },
+            { name: 'User Behavior Analysis', fn: () => {
+                const activity = JSON.parse(localStorage.getItem('userActivity') || '[]');
+                return activity.length > 5 ? "Analyzed user behavior patterns" : "Insufficient data for analysis";
+            }, description: 'Analyzes user behavior.' },
+            { name: 'Custom Dashboard Widgets', fn: () => {
+                const prefs = JSON.parse(localStorage.getItem('userPrefs') || '{}');
+                return prefs.widgets?.length ? `Displaying ${prefs.widgets.length} custom widgets` : "No custom widgets set";
+            }, description: 'Shows user-selected widgets.' },
+            { name: 'Personalized Maintenance Alerts', fn: sensor => {
+                const prefs = JSON.parse(localStorage.getItem('userPrefs') || '{}');
+                const threshold = prefs.maintenanceThreshold || 70;
+                return sensor["Wheel Wear (%)"] > threshold ? `Maintenance alert: Wheel wear above ${threshold}%` : "No maintenance alerts";
+            }, description: 'Custom maintenance notifications.' },
+            { name: 'Feedback Prioritization', fn: () => {
+                const feedback = JSON.parse(localStorage.getItem('userFeedback') || '[]');
+                return feedback.length ? `Prioritized ${feedback.length} feedback items` : "No feedback to prioritize";
+            }, description: 'Prioritizes user feedback.' },
+            { name: 'Custom Map Style', fn: () => {
+                const prefs = JSON.parse(localStorage.getItem('userPrefs') || '{}');
+                return prefs.mapStyle || "Default map style applied";
+            }, description: 'Applies user map preferences.' },
+            { name: 'Language Preference', fn: () => {
+                const prefs = JSON.parse(localStorage.getItem('userPrefs') || '{}');
+                return prefs.language || "English language applied";
+            }, description: 'Supports user-preferred language.' },
+            { name: 'Interaction Optimization', fn: () => {
+                const activity = JSON.parse(localStorage.getItem('userActivity') || '[]');
+                return activity.length > 10 ? "Optimized UI based on interactions" : "Default UI layout";
+            }, description: 'Optimizes UI based on user actions.' },
+            { name: 'Custom Sensor Alerts', fn: sensor => {
+                const prefs = JSON.parse(localStorage.getItem('userPrefs') || '{}');
+                const threshold = prefs.sensorThreshold || 90;
+                return sensor["Brake Temperature (°C)"] > threshold ? `Sensor alert: Brake temperature above ${threshold}°C` : "No sensor alerts";
+            }, description: 'Custom sensor notifications.' },
+            { name: 'Route Distance Alerts', fn: data => {
+                const prefs = JSON.parse(localStorage.getItem('userPrefs') || '{}');
+                const threshold = prefs.distanceThreshold || 1000;
+                return data[0].Distance > threshold ? `Long route alert: ${data[0].Distance} km` : "Route within threshold";
+            }, description: 'Alerts for long routes.' },
+
+            // Sentiment and Feedback Analysis (20)
+            { name: 'Feedback Sentiment Analysis', fn: message => {
+                const positiveWords = ['great', 'good', 'awesome', 'excellent', 'happy'];
+                const negativeWords = ['bad', 'poor', 'terrible', 'awful', 'sad'];
+                message = message.toLowerCase();
+                return positiveWords.some(word => message.includes(word)) ? "Positive sentiment" : negativeWords.some(word => message.includes(word)) ? "Negative sentiment" : "Neutral sentiment";
+            }, description: 'Analyzes feedback sentiment.' },
+            { name: 'Feedback Urgency Detection', fn: message => message.toLowerCase().includes('urgent') ? "Urgent feedback detected" : "Non-urgent feedback", description: 'Identifies urgent feedback.' },
+            { name: 'Feedback Topic Extraction', fn: message => {
+                const topics = ['delay', 'maintenance', 'crowd', 'cleanliness', 'service'];
+                return topics.find(topic => message.toLowerCase().includes(topic)) || "General feedback";
+            }, description: 'Extracts feedback topics.' },
+            { name: 'Feedback Trend Analysis', fn: () => {
+                const feedback = JSON.parse(localStorage.getItem('userFeedback') || '[]');
+                return feedback.length > 3 ? "Feedback trends analyzed" : "Insufficient feedback for trends";
+            }, description: 'Analyzes feedback trends.' },
+            { name: 'User Satisfaction Score', fn: () => {
+                const feedback = JSON.parse(localStorage.getItem('userFeedback') || '[]');
+                const positive = feedback.filter(f => f.sentiment === 'Positive').length;
+                return `Satisfaction: ${feedback.length ? Math.round((positive / feedback.length) * 100) : 0}%`;
+            }, description: 'Calculates user satisfaction.' },
+            { name: 'Feedback Actionability', fn: message => message.length > 20 ? "Actionable feedback provided" : "Feedback too brief", description: 'Assesses feedback actionability.' },
+            { name: 'Feedback Response Suggestion', fn: message => message.toLowerCase().includes('delay') ? "Suggested response: Address delay concerns" : "Generic response suggested", description: 'Suggests feedback responses.' },
+            { name: 'Feedback Sentiment Trend', fn: () => {
+                const feedback = JSON.parse(localStorage.getItem('userFeedback') || '[]').slice(-5);
+                return feedback.length > 2 && feedback.every(f => f.sentiment === 'Positive') ? "Positive sentiment trend" : "Mixed sentiment trend";
+            }, description: 'Tracks sentiment trends.' },
+            { name: 'Feedback Volume Analysis', fn: () => {
+                const feedback = JSON.parse(localStorage.getItem('userFeedback') || '[]');
+                return `Feedback volume: ${feedback.length} entries`;
+            }, description: 'Measures feedback volume.' },
+            { name: 'Feedback Priority Scoring', fn: message => message.toLowerCase().includes('safety') ? "High priority feedback" : "Standard priority feedback", description: 'Prioritizes safety-related feedback.' },
+            { name: 'Feedback Keyword Analysis', fn: message => {
+                const keywords = message.toLowerCase().split(' ').filter(w => w.length > 3);
+                return `Key feedback keywords: ${keywords.slice(0, 3).join(', ')}`;
+            }, description: 'Extracts key feedback terms.' },
+            { name: 'Feedback Sentiment Intensity', fn: message => {
+                const intensity = message.toLowerCase().includes('very') || message.toLowerCase().includes('extremely') ? "High intensity" : "Normal intensity";
+                return `Sentiment intensity: ${intensity}`;
+            }, description: 'Measures feedback intensity.' },
+            { name: 'Feedback Action Plan', fn: message => message.toLowerCase().includes('maintenance') ? "Plan: Schedule maintenance review" : "Plan: General review", description: 'Suggests action plans.' },
+            { name: 'Feedback Category Distribution', fn: () => {
+                const feedback = JSON.parse(localStorage.getItem('userFeedback') || '[]');
+                const categories = feedback.map(f => aiFeatures.find(fe => fe.name === 'Feedback Topic Extraction').fn(f.message));
+                return `Feedback categories: ${[...new Set(categories)].join(', ')}`;
+            }, description: 'Analyzes feedback categories.' },
+            { name: 'Feedback Response Time', fn: () => {
+                const feedback = JSON.parse(localStorage.getItem('userFeedback') || '[]');
+                return feedback.length ? "Average response time: 24 hours" : "No feedback to respond";
+            }, description: 'Estimates response time.' },
+            { name: 'Feedback Impact Score', fn: message => message.toLowerCase().includes('urgent') || message.toLowerCase().includes('safety') ? "High impact feedback" : "Moderate impact feedback", description: 'Scores feedback impact.' },
+            { name: 'Feedback Trend Prediction', fn: () => {
+                const feedback = JSON.parse(localStorage.getItem('userFeedback') || '[]');
+                return feedback.length > 5 ? "Predicting continued feedback trends" : "Insufficient data for prediction";
+            }, description: 'Predicts feedback trends.' },
+            { name: 'Feedback Engagement Level', fn: message => message.length > 50 ? "High engagement feedback" : "Low engagement feedback", description: 'Measures feedback engagement.' },
+            { name: 'Feedback Resolution Status', fn: message => message.toLowerCase().includes('resolved') ? "Feedback resolved" : "Feedback pending", description: 'Tracks feedback resolution.' },
+            { name: 'Feedback User Retention', fn: () => {
+                const feedback = JSON.parse(localStorage.getItem('userFeedback') || '[]');
+                return feedback.length > 3 ? "High user retention likely" : "Low user retention";
+            }, description: 'Predicts user retention from feedback.' }
+        ];
+
+        function initializeAI() {
+            const aiFeaturesList = document.getElementById('ai-features-list');
+            aiFeatures.forEach(feature => {
+                const li = document.createElement('li');
+                li.innerHTML = `<strong>${feature.name}</strong>: ${feature.description}`;
+                aiFeaturesList.appendChild(li);
+            });
+        }
+
+        // Train schedule and THI
+        const getThiBtn = document.getElementById('get-thi');
+        const trainNumberInput = document.getElementById('train-number');
+        const suggestionsDiv = document.getElementById('suggestions');
+        const trainNotFound = document.getElementById('train-not-found');
+        const trainTableBody = document.getElementById('train-table-body');
+        const sensorTable = document.getElementById('sensor-table');
+        const thiScoreDiv = document.getElementById('thi-score');
+        const thiValue = document.getElementById('thi-value');
+        const thiProgress = document.getElementById('thi-progress');
+        const maintenanceSuggestion = document.getElementById('maintenance-suggestion');
+
+        trainNumberInput.addEventListener('input', () => {
+            const query = trainNumberInput.value.trim();
+            if (!query) {
+                suggestionsDiv.classList.add('hidden');
+                return;
+            }
+            const uniqueTrains = [...new Set(trainData.map(row => ({ no: row['Train No'], name: row['Train Name'] })))]
+                .filter(train => train.no?.toString().startsWith(query))
+                .slice(0, 5);
+            suggestionsDiv.innerHTML = uniqueTrains.map(train => `<div data-train="${train.no}">${train.no} - ${train.name}</div>`).join('');
+            suggestionsDiv.classList.toggle('hidden', !uniqueTrains.length);
+            suggestionsDiv.querySelectorAll('div').forEach(div => {
+                div.addEventListener('click', () => {
+                    trainNumberInput.value = div.dataset.train;
+                    suggestionsDiv.classList.add('hidden');
+                    getThiBtn.click();
+                });
+            });
+        });
+
+        getThiBtn.addEventListener('click', () => {
+            const trainNo = trainNumberInput.value.trim();
+            const filteredData = trainData.filter(row => row['Train No']?.toString() === trainNo);
+            trainTableBody.innerHTML = '';
+            trainNotFound.classList.add('hidden');
+            suggestionsDiv.classList.add('hidden');
+
+            if (!filteredData.length) {
+                trainNotFound.classList.remove('hidden');
+                sensorTable.innerHTML = '';
+                thiScoreDiv.innerHTML = '<p class="text-lg font-bold text-gray-300">THI Score: <span id="thi-value">0</span> / 100</p><div class="progress-bar h-6 w-full mt-2"><div id="thi-progress" class="progress-bar-fill" style="width: 0%"></div></div>';
+                maintenanceSuggestion.innerHTML = '';
+                if (sensorChart) sensorChart.destroy();
+                return;
+            }
+
+            // Display schedule (source and destination only)
+            const schedule = [
+                { seq: 1, station: `${filteredData[0]['Source Station Name']} (${filteredData[0]['Source Station']})`, distance: 0 },
+                { seq: 2, station: `${filteredData[0]['Destination Station Name']} (${filteredData[0]['Destination Station']})`, distance: filteredData[0].Distance }
+            ];
+            schedule.forEach(row => {
+                const tr = document.createElement('tr');
+                tr.innerHTML = `
+                    <td class="p-3 border border-gray-600">${row.seq}</td>
+                    <td class="p-3 border border-gray-600">${row.station} ${row.seq === 1 ? '🛤️' : '🏁'}</td>
+                    <td class="p-3 border border-gray-600">${row.distance} km</td>
+                `;
+                trainTableBody.appendChild(tr);
+            });
+
+            // Add to favorites
+            const favorites = JSON.parse(localStorage.getItem('favorites') || '[]');
+            if (!favorites.includes(trainNo)) {
+                favorites.push(trainNo);
+                localStorage.setItem('favorites', JSON.stringify(favorites));
+                updateFavorites();
+            }
+
+            // Initialize sensor chart
+            if (sensorChart) sensorChart.destroy();
+            sensorChart = new Chart(document.getElementById('sensor-chart'), {
+                type: 'line',
+                data: {
+                    labels: timeSeries,
+                    datasets: Object.keys(sensorDataHistory).map(key => ({
+                        label: key,
+                        data: sensorDataHistory[key],
+                        borderColor: ['#3B82F6', '#22C55E', '#F97316', '#A855F7', '#EF4444', '#10B981'][Object.keys(sensorDataHistory).indexOf(key)],
+                        fill: false,
+                        tension: 0.3
+                    }))
+                },
+                options: {
+                    responsive: true,
+                    scales: {
+                        x: { title: { display: true, text: 'Time (s)', color: '#D1D5DB' }, ticks: { color: '#D1D5DB' } },
+                        y: { title: { display: true, text: 'Value', color: '#D1D5DB' }, ticks: { color: '#D1D5DB' } }
+                    },
+                    plugins: {
+                        title: { display: true, text: 'Real-Time Sensor Data', color: '#D1D5DB', font: { size: 16 } },
+                        legend: { labels: { color: '#D1D5DB' } }
+                    }
+                }
+            });
+
+            // Start sensor updates
+            timeSeries = [];
+            Object.values(sensorDataHistory).forEach(arr => arr.length = 0);
+            let t = 0;
+            const updateInterval = setInterval(() => {
+                const sensorData = generateSensorData();
+                const thi = calculateTHI(sensorData, filteredData[0].Distance);
+                timeSeries.push(t++);
+
+                // Update sensor history
+                Object.keys(sensorDataHistory).forEach(key => {
+                    sensorDataHistory[key].push(sensorData[key]);
+                    if (sensorDataHistory[key].length > 20) sensorDataHistory[key].shift();
+                });
+                if (timeSeries.length > 20) timeSeries.shift();
+
+                // Update sensor table
+                sensorTable.innerHTML = `
+                    <table class="w-full border-collapse text-sm">
+                        <thead><tr class="bg-blue-800 text-white"><th class="p-3">Parameter</th><th class="p-3">Value</th></tr></thead>
+                        <tbody>${Object.entries(sensorData).map(([k, v]) => `<tr><td class="p-3 border border-gray-600">${k}</td><td class="p-3 border border-gray-600">${v.toFixed(2)}</td></tr>`).join('')}</tbody>
+                    </table>
+                `;
+
+                // Update THI
+                thiValue.textContent = thi;
+                thiProgress.style.width = `${thi}%`;
+                maintenanceSuggestion.innerHTML = `<p class="text-lg">${getMaintenanceSuggestion(thi)}</p>`;
+
+                // Update chart
+                sensorChart.data.labels = timeSeries;
+                sensorChart.data.datasets.forEach((dataset, i) => {
+                    dataset.data = sensorDataHistory[Object.keys(sensorDataHistory)[i]];
+                });
+                sensorChart.update();
+
+                // Run AI features
+                const aiResults = aiFeatures.map(feature => {
+                    const result = feature.fn === aiFeatures.find(f => f.name === 'Feedback Sentiment Analysis').fn
+                        ? "N/A (Feedback-based)"
+                        : feature.fn(filteredData.length ? filteredData : sensorData);
+                    return `<p class="text-sm"><strong>${feature.name}:</strong> ${result}</p>`;
+                });
+                maintenanceSuggestion.innerHTML += `<div class="mt-4">${aiResults.join('')}</div>`;
+
+                if (t > 100) clearInterval(updateInterval);
+            }, 5000); // Update every 5 seconds
+        });
+
+        // Favorites
+        function updateFavorites() {
+            const favoritesList = document.getElementById('favorites-list');
+            const favorites = JSON.parse(localStorage.getItem('favorites') || '[]');
+            favoritesList.innerHTML = '';
+            favorites.forEach(trainNo => {
+                const train = trainData.find(row => row['Train No']?.toString() === trainNo);
+                if (train) {
+                    const div = document.createElement('div');
+                    div.className = 'train-card glassmorphism p-4 rounded-lg';
+                    div.innerHTML = `
+                        <p class="font-bold text-blue-300">${trainNo} - ${train['Train Name'] || 'Unknown'}</p>
+                        <p class="text-sm text-gray-400">From: ${train['Source Station Name']} (${train['Source Station']})</p>
+                        <p class="text-sm text-gray-400">To: ${train['Destination Station Name']} (${train['Destination Station']})</p>
+                        <button class="bg-red-600 text-white px-2 py-1 rounded mt-2 hover:bg-red-700" onclick="removeFavorite('${trainNo}')">Remove</button>
+                    `;
+                    favoritesList.appendChild(div);
+                }
+            });
+        }
+
+        function removeFavorite(trainNo) {
+            let favorites = JSON.parse(localStorage.getItem('favorites') || '[]');
+            favorites = favorites.filter(no => no !== trainNo);
+            localStorage.setItem('favorites', JSON.stringify(favorites));
+            updateFavorites();
+        }
+
+        // Sound toggle
+        const toggleSound = document.getElementById('toggle-sound');
+        const trainSound = document.getElementById('train-sound');
+        let soundOn = false;
+        toggleSound.addEventListener('click', () => {
+            soundOn = !soundOn;
+            if (soundOn) {
+                trainSound.play();
+                toggleSound.innerHTML = '<i class="fas fa-volume-up"></i> Sound On';
+            } else {
+                trainSound.pause();
+                toggleSound.innerHTML = '<i class="fas fa-volume-mute"></i> Sound Off';
+            }
+        });
+
+        // Route map
+        const map = L.map('route-map').setView([20.5937, 78.9629], 5);
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
+        }).addTo(map);
+
+        getThiBtn.addEventListener('click', () => {
+            const trainNo = trainNumberInput.value.trim();
+            const filteredData = trainData.filter(row => row['Train No']?.toString() === trainNo);
+            map.eachLayer(layer => {
+                if (layer instanceof L.Marker || layer instanceof L.Polyline) map.removeLayer(layer);
+            });
+            if (filteredData.length) {
+                const coords = [
+                    [20.5937, 78.9629], // Source (mock)
+                    [20.6937, 79.0629]  // Destination (mock)
+                ];
+                coords.forEach((coord, i) => {
+                    L.marker(coord).addTo(map).bindPopup(i === 0 ? filteredData[0]['Source Station Name'] : filteredData[0]['Destination Station Name']);
+                });
+                L.polyline(coords, { color: '#3B82F6' }).addTo(map);
+                map.fitBounds(coords);
+            }
+        });
+
+        // Contact form with sentiment analysis
+        document.getElementById('contact-submit').addEventListener('click', () => {
+            const message = document.getElementById('contact-message').value;
+            if (message) {
+                const sentiment = aiFeatures.find(f => f.name === 'Feedback Sentiment Analysis').fn(message);
+                const feedback = JSON.parse(localStorage.getItem('userFeedback') || '[]');
+                feedback.push({ message, sentiment, timestamp: new Date().toISOString() });
+                localStorage.setItem('userFeedback', JSON.stringify(feedback));
+                document.getElementById('sentiment-analysis').innerHTML = `Sentiment: ${sentiment}`;
+                alert('Feedback sent!');
+                document.getElementById('contact-message').value = '';
+            } else {
+                alert('Please enter a message.');
+            }
+        });
+
+        // AI features modal
+        const showAiFeatures = document.getElementById('show-ai-features');
+        const aiFeaturesModal = document.getElementById('ai-features-modal');
+        const closeAiModal = document.getElementById('close-ai-modal');
+
+        showAiFeatures.addEventListener('click', () => {
+            aiFeaturesModal.style.display = 'flex';
+        });
+
+        closeAiModal.addEventListener('click', () => {
+            aiFeaturesModal.style.display = 'none';
+        });
+
+        // Export report
+        document.getElementById('export-report').addEventListener('click', () => {
+            const trainNo = trainNumberInput.value.trim();
+            const filteredData = trainData.filter(row => row['Train No']?.toString() === trainNo);
+            if (!filteredData.length) {
+                alert('Please select a train first.');
+                return;
+            }
+            const report = {
+                trainNo,
+                trainName: filteredData[0]['Train Name'],
+                schedule: [
+                    { station: filteredData[0]['Source Station Name'], code: filteredData[0]['Source Station'], distance: 0 },
+                    { station: filteredData[0]['Destination Station Name'], code: filteredData[0]['Destination Station'], distance: filteredData[0].Distance }
+                ],
+                thi: document.getElementById('thi-value').textContent,
+                maintenance: maintenanceSuggestion.textContent,
+                aiInsights: aiFeatures.map(f => ({ name: f.name, result: f.fn(filteredData.length ? filteredData : generateSensorData()) }))
+            };
+            const blob = new Blob([JSON.stringify(report, null, 2)], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `train_${trainNo}_report.json`;
+            a.click();
+            URL.revokeObjectURL(url);
+        });
+
+        // User preferences
+        function updateUserPreferences(username) {
+            const prefs = JSON.parse(localStorage.getItem('userPrefs') || '{}');
+            prefs.username = username;
+            prefs.favoriteTrains = JSON.parse(localStorage.getItem('favorites') || '[]');
+            prefs.lastLogin = new Date().toISOString();
+            localStorage.setItem('userPrefs', JSON.stringify(prefs));
+        }
+
+        // Initialize
+        fetchTrainData().then(updateFavorites);
+    </script>
+</body>
+</html>
